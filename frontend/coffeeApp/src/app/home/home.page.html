@@ -1,0 +1,36 @@
+<ion-content class="game-bg">
+  <div class="top-bar">
+    <div class="stat-badge level-badge">
+      <span class="label">LEVEL</span>
+      <span class="value">{{user?.level || 1}}</span>
+    </div>
+    <div class="stat-badge coin-badge">
+      <span class="icon">💰</span>
+      <span class="value">{{user?.coins || 0}}</span>
+    </div>
+  </div>
+
+  <div class="xp-container">
+    <div class="xp-text">⭐ XP: {{user?.xp || 0}} / 100</div>
+    <ion-progress-bar class="xp-bar" [value]="(user?.xp || 0) / 100"></ion-progress-bar>
+  </div>
+
+  <div class="coffee-container">
+    <div class="coffee-button" (click)="tapCoffee()" [class.clicking]="isRequesting">
+      <div class="emoji">☕</div>
+    </div>
+    
+    <ion-progress-bar class="brew-bar" [value]="progress" color="warning"></ion-progress-bar>
+    <div class="brew-text" *ngIf="isRequesting">Menyeduh...</div>
+    <div class="brew-text" *ngIf="!isRequesting">Tap untuk Kopi!</div>
+  </div>
+
+  <div class="action-container">
+    <button class="idle-btn" (click)="claimIdle()" [disabled]="isRequesting">
+      <div class="idle-content">
+        <span class="icon">🎁</span>
+        <span class="text">Klaim Idle Reward</span>
+      </div>
+    </button>
+  </div>
+</ion-content>
