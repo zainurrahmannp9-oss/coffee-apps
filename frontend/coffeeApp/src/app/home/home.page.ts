@@ -94,7 +94,7 @@ export class HomePage {
   }
 
   addIngredient(item: string) {
-    if (this.customerMood !== 'neutral') return; // Wait for next customer
+    if (this.customerMood !== 'neutral') return; 
     
     if (this.currentCup.length < 5) {
       this.currentCup.push(item);
@@ -114,7 +114,6 @@ export class HomePage {
   async serveOrder() {
     if (this.isRequesting || !this.currentCustomer) return;
     
-    // Check if recipe matches EXACTLY (order matters for now, or just length and includes)
     const isCorrect = this.currentCup.length === this.currentCustomer.ingredients.length &&
                       this.currentCup.every((val, index) => val === this.currentCustomer!.ingredients[index]);
 
@@ -126,7 +125,6 @@ export class HomePage {
         let clank = this.buySound.cloneNode() as HTMLAudioElement;
         clank.play().catch(e => console.log(e));
         
-        // Calculate reward: Base Reward * (1 + (clickPower/100))
         const powerMult = (this.user.clickPower || 50) / 50; 
         const rewardCoins = Math.floor(this.currentCustomer.baseReward * powerMult);
         const rewardXp = this.currentCustomer.baseXp;
@@ -144,7 +142,6 @@ export class HomePage {
         let beep = this.wrongSound.cloneNode() as HTMLAudioElement;
         beep.play().catch(e => console.log(e));
         
-        // Deduct energy for wrong order
         const res: any = await lastValueFrom(this.api.play(0, 0, 15));
         this.user = res.user;
         this.user.clickPower = res.clickPower;
@@ -158,13 +155,12 @@ export class HomePage {
       this.isRequesting = false;
       setTimeout(() => {
         this.generateCustomer();
-      }, 1500); // 1.5 seconds delay before next customer
+      }, 1500); 
     }
   }
   
   spawnFloatingText(text: string, color: string, offset = 0) {
     const id = Date.now() + Math.random();
-    // Center screen relative coords
     this.floatingTexts.push({ id, x: window.innerWidth / 2 - 50 + offset, y: window.innerHeight / 2 - 100, text, color });
     setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 1500);
   }
@@ -172,17 +168,26 @@ export class HomePage {
   startAutoClicker() {
     if (this.autoClickInterval) clearInterval(this.autoClickInterval);
     
-    this.autoClickInterval = setInterval(() => {
-      if (this.user.autoClicker > 0) {
-        const basePower = this.user.clickPower || 50;
-        const autoReward = Math.floor(basePower / 5) * this.user.autoClicker;
-        this.user.coins += autoReward;
-        
-        const id = Date.now() + Math.random();
-        this.floatingTexts.push({ id, x: 10 + Math.random()*50, y: window.innerHeight - 150, text: `+${autoReward} 🤖`, color: '#ffeb3b' });
-        setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 1000);
+    // Sync with backend every 10 seconds to get auto-clicker rewards & energy regen
+    this.autoClickInterval = setInterval(async () => {
+      try {
+        const res: any = await lastValueFrom(this.api.idle());
+        if (res.reward > 0) {
+          this.user.coins += res.reward;
+          this.user.energy = res.energy;
+          
+          if (this.user.autoClicker > 0) {
+            const id = Date.now() + Math.random();
+            this.floatingTexts.push({ id, x: 10 + Math.random()*50, y: window.innerHeight - 150, text: `+${res.reward} 🤖`, color: '#ffeb3b' });
+            setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 1000);
+          }
+        } else if (res.energy > this.user.energy) {
+          this.user.energy = res.energy; // Just update energy if no coin reward
+        }
+      } catch(e) {
+        console.error("Auto-sync error", e);
       }
-    }, 2000); // Trigger every 2s for less spam
+    }, 10000); 
   }
 
   closeWelcome() {
