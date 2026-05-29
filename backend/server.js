@@ -39,30 +39,39 @@ app.get('/user', (req, res) => {
   });
 });
 
-// TAP GAME
+// SERVE GAME (Replaced old Tap logic)
 app.post('/play', (req, res) => {
+  const { rewardCoins, rewardXp, energyCost } = req.body;
+  
   db.query('SELECT * FROM users LIMIT 1', (err, result) => {
     let user = result[0];
     
     let energy = user.energy !== null && user.energy !== undefined ? user.energy : 100;
-    if (energy <= 0) {
+    let safeCost = energyCost || 10;
+    
+    if (energy < safeCost && safeCost > 0) {
       return res.status(400).json({ error: "Energi habis! Tunggu sebentar." });
     }
 
     let clickPower = user.clickPower || 50;
-    let coins = user.coins + clickPower;
+    let safeCoins = rewardCoins || clickPower; // Use provided reward, fallback to clickPower
+    let coins = user.coins + safeCoins;
     
-    // Dynamic level scaling
-    let reqXp = user.level * 100 + ((user.level - 1) * 50);
-    let xp = user.xp + 20;
+    let safeXp = rewardXp || 20;
+    let xp = user.xp + safeXp;
     let level = user.level;
 
-    if (xp >= reqXp) {
+    // Dynamic level scaling
+    let reqXp = user.level * 100 + ((user.level - 1) * 50);
+
+    while (xp >= reqXp) {
       level++;
-      xp = 0;
+      xp -= reqXp; // carry over remaining XP
+      reqXp = level * 100 + ((level - 1) * 50);
     }
 
-    energy -= 10; // Deduct 10 energy per click
+    energy -= safeCost; 
+    if (energy < 0) energy = 0;
 
     db.query(
       'UPDATE users SET coins=?, xp=?, level=?, energy=? WHERE id=?',
@@ -76,14 +85,14 @@ app.post('/play', (req, res) => {
   });
 });
 
-// TRUE IDLE (CALLED ON STARTUP)
+// TRUE IDLE 
 app.post('/idle', (req, res) => {
   db.query('SELECT * FROM users LIMIT 1', (err, result) => {
     let user = result[0];
 
     let now = new Date();
     let last = new Date(user.lastLogin);
-    let diff = Math.floor((now - last) / 1000); // seconds passed
+    let diff = Math.floor((now - last) / 1000); 
     
     if (diff < 0) diff = 0;
     
@@ -91,13 +100,11 @@ app.post('/idle', (req, res) => {
     let autoClickerLevel = user.autoClicker || 0;
     let clickPower = user.clickPower || 50;
     
-    // Auto clicker earns (clickPower / 5) per second offline per level
     let autoClickerReward = diff * Math.floor(clickPower / 5) * autoClickerLevel;
     let totalReward = baseReward + autoClickerReward;
     
     let coins = user.coins + totalReward;
 
-    // Energy regen (1 per second)
     let maxEnergy = user.maxEnergy || 100;
     let currentEnergy = user.energy !== null && user.energy !== undefined ? user.energy : 100;
     let newEnergy = Math.min(maxEnergy, currentEnergy + diff);

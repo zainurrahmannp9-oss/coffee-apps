@@ -1,23 +1,21 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ApiService {
+  private baseUrl = 'https://coffee-apps-production.up.railway.app'; 
 
-  baseUrl = environment.apiUrl;
-
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
   getUser(): Observable<any> {
     return this.http.get(this.baseUrl + '/user');
   }
 
-  play(): Observable<any> {
-    return this.http.post(this.baseUrl + '/play', {});
+  play(rewardCoins: number, rewardXp: number, energyCost: number): Observable<any> {
+    return this.http.post(this.baseUrl + '/play', { rewardCoins, rewardXp, energyCost });
   }
 
   idle(): Observable<any> {

@@ -15,49 +15,90 @@
     <ion-progress-bar class="xp-bar" [value]="(user?.xp || 0) / getRequiredXp()"></ion-progress-bar>
   </div>
   
-  <!-- Energy Bar -->
   <div class="energy-container">
     <div class="energy-text">⚡ Energi: {{user?.energy || 0}} / {{user?.maxEnergy || 100}}</div>
     <ion-progress-bar class="energy-bar" color="danger" [value]="(user?.energy || 0) / (user?.maxEnergy || 100)"></ion-progress-bar>
   </div>
 
-  <div class="coffee-container">
-    <div class="coffee-button" 
-         (click)="tapCoffee($event)" 
-         [class.clicking]="isRequesting"
-         [class.shake]="isShaking">
-         
-      <div class="emoji">{{ getCoffeeEmoji() }}</div>
-      
-      <!-- FLOATING TEXTS -->
-      <div *ngFor="let t of floatingTexts" 
-           class="floating-text" 
-           [style.left.px]="t.x" 
-           [style.top.px]="t.y">
-        {{ t.text }}
-      </div>
-    </div>
-    
-    <ion-progress-bar class="brew-bar" [value]="progress" color="warning"></ion-progress-bar>
-    <div class="brew-text" *ngIf="isRequesting">Menyeduh...</div>
-    <div class="brew-text" *ngIf="!isRequesting">Tap untuk Kopi!</div>
+  <!-- FLOATING TEXTS -->
+  <div *ngFor="let t of floatingTexts" 
+       class="floating-text" 
+       [style.left.px]="t.x" 
+       [style.top.px]="t.y"
+       [style.color]="t.color">
+    {{ t.text }}
   </div>
 
-  <div class="action-container">
-    <button class="shop-btn" (click)="toggleShop()">
-      <div class="idle-content" style="background: transparent; padding:0; display:flex; gap:10px; justify-content:center;">
-        <span class="icon">🛒</span>
-        <span class="text">Buka Toko Upgrade</span>
+  <!-- CUSTOMER AREA -->
+  <div class="customer-area" *ngIf="currentCustomer">
+    <div class="speech-bubble" [ngClass]="customerMood">
+      <h3 *ngIf="customerMood === 'neutral'">{{ currentCustomer.name }}</h3>
+      <h3 *ngIf="customerMood === 'happy'">Sempurna! Makasih!</h3>
+      <h3 *ngIf="customerMood === 'angry'">Apa ini?! Payah!</h3>
+      
+      <div class="order-hints" *ngIf="customerMood === 'neutral'">
+        <span *ngFor="let item of currentCustomer.ingredients">{{ item }}</span>
       </div>
+    </div>
+    <div class="customer-face" [ngClass]="{'bounce': customerMood === 'happy', 'shake': customerMood === 'angry'}">
+      {{ currentFace }}
+    </div>
+  </div>
+
+  <!-- WORKSTATION / CUP AREA -->
+  <div class="workstation">
+    <div class="cup-display">
+      <div class="cup-icon" [ngClass]="{'brewing': isRequesting}">🥤</div>
+      <div class="cup-ingredients">
+        <span *ngFor="let item of currentCup" class="ingredient-added">{{ item }}</span>
+        <span class="empty-hint" *ngIf="currentCup.length === 0">Gelas Kosong</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- INGREDIENT BUTTONS -->
+  <div class="kitchen-buttons">
+    <button class="ing-btn" (click)="addIngredient('☕')" [disabled]="isRequesting || customerMood !== 'neutral'">
+      <div class="icon">☕</div>
+      <div class="name">Kopi</div>
+    </button>
+    <button class="ing-btn" (click)="addIngredient('🥛')" [disabled]="isRequesting || customerMood !== 'neutral'">
+      <div class="icon">🥛</div>
+      <div class="name">Susu</div>
+    </button>
+    <button class="ing-btn" (click)="addIngredient('🧊')" [disabled]="isRequesting || customerMood !== 'neutral'">
+      <div class="icon">🧊</div>
+      <div class="name">Es</div>
+    </button>
+    <button class="ing-btn" (click)="addIngredient('🍯')" [disabled]="isRequesting || customerMood !== 'neutral'">
+      <div class="icon">🍯</div>
+      <div class="name">Sirup</div>
+    </button>
+  </div>
+
+  <!-- ACTION BUTTONS -->
+  <div class="action-row">
+    <button class="action-btn cancel" (click)="clearCup()" [disabled]="isRequesting || customerMood !== 'neutral' || currentCup.length === 0">
+      🗑️ Buang
+    </button>
+    <button class="action-btn serve" (click)="serveOrder()" [disabled]="isRequesting || customerMood !== 'neutral' || currentCup.length === 0">
+      ✅ Sajikan!
+    </button>
+  </div>
+
+  <!-- SHOP BUTTON -->
+  <div class="bottom-shop-container">
+    <button class="shop-btn" (click)="toggleShop()">
+      🛒 Buka Toko Upgrade
     </button>
   </div>
   
-  <!-- WELCOME POPUP (TRUE IDLE) -->
+  <!-- WELCOME POPUP -->
   <div class="shop-modal" *ngIf="showWelcomePopup">
     <div class="shop-content welcome-box">
       <h2>Selamat Datang! 👋</h2>
       <div class="welcome-icon">🛌</div>
-      <p>Saat Anda beristirahat selama <b>{{ offlineTime }} menit</b>, kafe Anda terus bekerja keras!</p>
+      <p>Saat Anda beristirahat selama <b>{{ offlineTime }} menit</b>, robot kafe Anda terus bekerja keras!</p>
       <div class="offline-reward">
         +{{ offlineReward }} 💰
       </div>
@@ -73,8 +114,8 @@
       
       <div class="shop-item">
         <div class="item-info">
-          <h3>👨‍🍳 Sewa Barista</h3>
-          <p>+50 Koin / Seduh</p>
+          <h3>👨‍🍳 Latih Barista</h3>
+          <p>Skill Kopi +50</p>
         </div>
         <button class="buy-btn" (click)="buyUpgrade('barista')">500 💰</button>
       </div>
@@ -89,8 +130,8 @@
       
       <div class="shop-item">
         <div class="item-info">
-          <h3>🤖 Robot Auto-Clicker</h3>
-          <p>Ketuk Otomatis (Lvl {{user?.autoClicker || 0}})</p>
+          <h3>🤖 Robot Kasir</h3>
+          <p>Pendapatan Pasif Lvl {{user?.autoClicker || 0}}</p>
         </div>
         <button class="buy-btn" style="background: #e91e63; box-shadow: 0 4px 10px rgba(233, 30, 99, 0.4);" (click)="buyUpgrade('robot')">2000 💰</button>
       </div>

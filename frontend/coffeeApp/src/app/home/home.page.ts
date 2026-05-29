@@ -1,6 +1,24 @@
-import { Component, ElementRef, ViewChild } from '@angular/core';
+import { Component } from '@angular/core';
 import { ApiService } from '../services/api.service';
 import { lastValueFrom } from 'rxjs';
+
+interface Recipe {
+  id: string;
+  name: string;
+  ingredients: string[];
+  baseReward: number;
+  baseXp: number;
+  minLevel: number;
+}
+
+const RECIPES: Recipe[] = [
+  { id: 'black', name: 'Kopi Hitam', ingredients: ['☕'], baseReward: 20, baseXp: 10, minLevel: 1 },
+  { id: 'latte', name: 'Cafe Latte', ingredients: ['☕', '🥛'], baseReward: 50, baseXp: 25, minLevel: 1 },
+  { id: 'ice_coffee', name: 'Es Kopi', ingredients: ['☕', '🧊'], baseReward: 60, baseXp: 30, minLevel: 2 },
+  { id: 'ice_latte', name: 'Es Latte', ingredients: ['☕', '🥛', '🧊'], baseReward: 100, baseXp: 50, minLevel: 3 },
+  { id: 'frappe', name: 'Frappuccino', ingredients: ['☕', '🥛', '🧊', '🍯'], baseReward: 150, baseXp: 80, minLevel: 5 },
+  { id: 'caramel', name: 'Caramel Macchiato', ingredients: ['☕', '🥛', '🍯'], baseReward: 120, baseXp: 60, minLevel: 4 },
+];
 
 @Component({
   selector: 'app-home',
@@ -11,11 +29,7 @@ import { lastValueFrom } from 'rxjs';
 export class HomePage {
   
   user: any = { coins: 0, xp: 0, level: 1, energy: 100, maxEnergy: 100, clickPower: 50, autoClicker: 0 };
-  progress: number = 0;
   isRequesting: boolean = false;
-  
-  isShaking: boolean = false;
-  floatingTexts: any[] = [];
   
   isShopOpen: boolean = false;
   showWelcomePopup: boolean = false;
@@ -25,8 +39,17 @@ export class HomePage {
   // Audio
   popSound = new Audio('https://actions.google.com/sounds/v1/water/water_drop.ogg');
   buySound = new Audio('https://actions.google.com/sounds/v1/cartoon/clank.ogg');
-
+  wrongSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+  
   autoClickInterval: any;
+
+  // Gameplay State
+  currentCustomer: Recipe | null = null;
+  currentCup: string[] = [];
+  customerMood: 'happy' | 'angry' | 'neutral' = 'neutral';
+  floatingTexts: any[] = [];
+  customerFaces = ['👨‍💼', '👩‍⚕️', '👮‍♂️', '👩‍🏫', '🕵️‍♀️', '👨‍🎤'];
+  currentFace = '👨‍💼';
 
   constructor(private api: ApiService) {}
 
@@ -49,6 +72,7 @@ export class HomePage {
       if (this.user.clickPower === undefined || this.user.clickPower === null) this.user.clickPower = 50;
       if (this.user.autoClicker === undefined || this.user.autoClicker === null) this.user.autoClicker = 0;
       
+      this.generateCustomer();
       this.startAutoClicker();
 
     } catch (e) {
@@ -60,77 +84,105 @@ export class HomePage {
     if (this.autoClickInterval) clearInterval(this.autoClickInterval);
   }
 
-  startAutoClicker() {
-    if (this.autoClickInterval) clearInterval(this.autoClickInterval);
+  generateCustomer() {
+    this.currentCup = [];
+    this.customerMood = 'neutral';
+    this.currentFace = this.customerFaces[Math.floor(Math.random() * this.customerFaces.length)];
     
-    this.autoClickInterval = setInterval(async () => {
-      if (this.user.autoClicker > 0) {
-        if (this.isRequesting) return;
-        const basePower = this.user.clickPower || 50;
-        const autoReward = Math.floor(basePower / 5) * this.user.autoClicker;
-        this.user.coins += autoReward;
-        
-        const id = Date.now() + Math.random();
-        this.floatingTexts.push({ id, x: 100 + Math.random()*20, y: 100, text: `+${autoReward} 🤖` });
-        setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 800);
-      }
-    }, 1000);
+    const availableRecipes = RECIPES.filter(r => r.minLevel <= (this.user.level || 1));
+    this.currentCustomer = availableRecipes[Math.floor(Math.random() * availableRecipes.length)];
   }
 
-  tapCoffee(event: any) {
-    if (this.isRequesting) return;
-    if (this.user.energy <= 0) {
-      alert("Energi Habis! Tunggu sebentar agar pulih otomatis.");
-      return;
-    }
+  addIngredient(item: string) {
+    if (this.customerMood !== 'neutral') return; // Wait for next customer
     
+    if (this.currentCup.length < 5) {
+      this.currentCup.push(item);
+      let pop = this.popSound.cloneNode() as HTMLAudioElement;
+      pop.volume = 0.5;
+      pop.play().catch(e => console.log('Audio error:', e));
+    }
+  }
+
+  clearCup() {
+    this.currentCup = [];
     let pop = this.popSound.cloneNode() as HTMLAudioElement;
-    pop.volume = 0.5;
+    pop.volume = 0.3;
     pop.play().catch(e => console.log('Audio error:', e));
-
-    const rect = event.target.getBoundingClientRect();
-    const x = (event.clientX - rect.left) - 20 + Math.random() * 40;
-    const y = (event.clientY - rect.top) - 20;
-    
-    const id = Date.now() + Math.random();
-    this.floatingTexts.push({ id, x, y, text: `+${this.user.clickPower}` });
-    
-    setTimeout(() => {
-      this.floatingTexts = this.floatingTexts.filter(t => t.id !== id);
-    }, 800);
-    
-    this.isShaking = true;
-    setTimeout(() => this.isShaking = false, 150);
-    
-    this.progress += 0.2;
-
-    if (this.progress >= 0.99) {
-      this.finishGame();
-    }
   }
 
-  async finishGame() {
-    if (this.isRequesting) return;
-    this.isRequesting = true;
-    this.progress = 0; 
+  async serveOrder() {
+    if (this.isRequesting || !this.currentCustomer) return;
     
+    // Check if recipe matches EXACTLY (order matters for now, or just length and includes)
+    const isCorrect = this.currentCup.length === this.currentCustomer.ingredients.length &&
+                      this.currentCup.every((val, index) => val === this.currentCustomer!.ingredients[index]);
+
+    this.isRequesting = true;
+
     try {
-      const res: any = await lastValueFrom(this.api.play());
-      const oldLevel = this.user.level;
-      
-      this.user = res.user;
-      this.user.clickPower = res.clickPower;
-      
-      if (this.user.level > oldLevel) {
+      if (isCorrect) {
+        this.customerMood = 'happy';
         let clank = this.buySound.cloneNode() as HTMLAudioElement;
         clank.play().catch(e => console.log(e));
+        
+        // Calculate reward: Base Reward * (1 + (clickPower/100))
+        const powerMult = (this.user.clickPower || 50) / 50; 
+        const rewardCoins = Math.floor(this.currentCustomer.baseReward * powerMult);
+        const rewardXp = this.currentCustomer.baseXp;
+        const energyCost = 10;
+        
+        const res: any = await lastValueFrom(this.api.play(rewardCoins, rewardXp, energyCost));
+        this.user = res.user;
+        this.user.clickPower = res.clickPower;
+        
+        this.spawnFloatingText(`+${rewardCoins} 💰`, '#4CAF50');
+        this.spawnFloatingText(`+${rewardXp} ⭐`, '#2196F3', 50);
+
+      } else {
+        this.customerMood = 'angry';
+        let beep = this.wrongSound.cloneNode() as HTMLAudioElement;
+        beep.play().catch(e => console.log(e));
+        
+        // Deduct energy for wrong order
+        const res: any = await lastValueFrom(this.api.play(0, 0, 15));
+        this.user = res.user;
+        this.user.clickPower = res.clickPower;
+        
+        this.spawnFloatingText(`Salah! -15 ⚡`, '#F44336');
       }
     } catch (e: any) {
       console.error('Error playing game', e);
       if(e.error && e.error.error) alert(e.error.error);
     } finally {
       this.isRequesting = false;
+      setTimeout(() => {
+        this.generateCustomer();
+      }, 1500); // 1.5 seconds delay before next customer
     }
+  }
+  
+  spawnFloatingText(text: string, color: string, offset = 0) {
+    const id = Date.now() + Math.random();
+    // Center screen relative coords
+    this.floatingTexts.push({ id, x: window.innerWidth / 2 - 50 + offset, y: window.innerHeight / 2 - 100, text, color });
+    setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 1500);
+  }
+
+  startAutoClicker() {
+    if (this.autoClickInterval) clearInterval(this.autoClickInterval);
+    
+    this.autoClickInterval = setInterval(() => {
+      if (this.user.autoClicker > 0) {
+        const basePower = this.user.clickPower || 50;
+        const autoReward = Math.floor(basePower / 5) * this.user.autoClicker;
+        this.user.coins += autoReward;
+        
+        const id = Date.now() + Math.random();
+        this.floatingTexts.push({ id, x: 10 + Math.random()*50, y: window.innerHeight - 150, text: `+${autoReward} 🤖`, color: '#ffeb3b' });
+        setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 1000);
+      }
+    }, 2000); // Trigger every 2s for less spam
   }
 
   closeWelcome() {
@@ -163,13 +215,5 @@ export class HomePage {
   
   getRequiredXp(): number {
     return (this.user?.level || 1) * 100 + (((this.user?.level || 1) - 1) * 50);
-  }
-  
-  getCoffeeEmoji(): string {
-    const lvl = this.user?.level || 1;
-    if (lvl < 3) return "☕";
-    if (lvl < 5) return "🍵";
-    if (lvl < 10) return "🧋";
-    return "🏆";
   }
 }
