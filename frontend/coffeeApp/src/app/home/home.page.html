@@ -31,17 +31,25 @@
 
   <!-- CUSTOMER AREA -->
   <div class="customer-area" *ngIf="currentCustomer">
+    <div class="patience-bar-container" *ngIf="customerMood === 'neutral'">
+      <ion-progress-bar class="patience-bar" 
+         [value]="customerPatience / 100" 
+         [color]="customerPatience > 50 ? 'success' : (customerPatience > 20 ? 'warning' : 'danger')">
+      </ion-progress-bar>
+    </div>
+
     <div class="speech-bubble" [ngClass]="customerMood">
       <h3 *ngIf="customerMood === 'neutral'">{{ currentCustomer.name }}</h3>
-      <h3 *ngIf="customerMood === 'happy'">Sempurna! Makasih!</h3>
-      <h3 *ngIf="customerMood === 'angry'">Apa ini?! Payah!</h3>
+      <h3 *ngIf="customerMood === 'happy'">Mantap! Terima kasih!</h3>
+      <h3 *ngIf="customerMood === 'angry'">Lama & Salah! Payah!</h3>
       
       <div class="order-hints" *ngIf="customerMood === 'neutral'">
         <span *ngFor="let item of currentCustomer.ingredients">{{ item }}</span>
       </div>
     </div>
-    <div class="customer-face" [ngClass]="{'bounce': customerMood === 'happy', 'shake': customerMood === 'angry'}">
-      {{ currentFace }}
+    
+    <div class="customer-character" [ngClass]="{'bounce': customerMood === 'happy', 'shake': customerMood === 'angry', 'shake-infinite': customerMood === 'neutral' && customerPatience < 20}">
+      <img [src]="customerAvatarUrl" alt="Customer" class="avatar-img" />
     </div>
   </div>
 
@@ -51,7 +59,6 @@
       <div class="cup-icon" [ngClass]="{'brewing': isRequesting}">🥤</div>
       <div class="cup-ingredients">
         <span *ngFor="let item of currentCup" class="ingredient-added">{{ item }}</span>
-        <span class="empty-hint" *ngIf="currentCup.length === 0">Gelas Kosong</span>
       </div>
     </div>
   </div>

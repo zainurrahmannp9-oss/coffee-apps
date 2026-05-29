@@ -53,7 +53,13 @@
   flex-direction: column;
   align-items: center;
   margin-top: 10px;
-  height: 220px;
+  height: 240px;
+}
+
+.patience-bar-container {
+  width: 200px;
+  margin-bottom: 10px;
+  .patience-bar { height: 10px; border-radius: 5px; }
 }
 
 .speech-bubble {
@@ -95,11 +101,23 @@
   }
 }
 
-.customer-face {
-  font-size: 80px;
-  filter: drop-shadow(0 5px 10px rgba(0,0,0,0.5));
-  &.bounce { animation: bounce 0.5s; }
-  &.shake { animation: shake 0.5s; }
+.customer-character {
+  width: 110px;
+  height: 110px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 50%;
+  border: 4px solid #ffc107;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+
+  .avatar-img { width: 95%; height: 95%; object-fit: contain; }
+
+  &.bounce { animation: bounce 0.5s; border-color: #4CAF50; }
+  &.shake { animation: shake 0.5s; border-color: #F44336; }
+  &.shake-infinite { animation: shake 0.5s infinite; border-color: #F44336; }
 }
 
 /* WORKSTATION */
@@ -134,7 +152,6 @@
     align-items: center;
 
     .ingredient-added { animation: popIn 0.2s ease-out; }
-    .empty-hint { color: #666; font-size: 1rem; font-weight: bold; }
   }
 }
 

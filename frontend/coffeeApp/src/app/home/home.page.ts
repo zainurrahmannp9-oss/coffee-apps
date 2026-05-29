@@ -42,14 +42,15 @@ export class HomePage {
   wrongSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
   
   autoClickInterval: any;
+  patienceInterval: any;
 
   // Gameplay State
   currentCustomer: Recipe | null = null;
   currentCup: string[] = [];
   customerMood: 'happy' | 'angry' | 'neutral' = 'neutral';
   floatingTexts: any[] = [];
-  customerFaces = ['👨‍💼', '👩‍⚕️', '👮‍♂️', '👩‍🏫', '🕵️‍♀️', '👨‍🎤'];
-  currentFace = '👨‍💼';
+  customerAvatarUrl: string = '';
+  customerPatience: number = 100;
 
   constructor(private api: ApiService) {}
 
@@ -82,15 +83,54 @@ export class HomePage {
   
   ionViewWillLeave() {
     if (this.autoClickInterval) clearInterval(this.autoClickInterval);
+    if (this.patienceInterval) clearInterval(this.patienceInterval);
   }
 
   generateCustomer() {
     this.currentCup = [];
     this.customerMood = 'neutral';
-    this.currentFace = this.customerFaces[Math.floor(Math.random() * this.customerFaces.length)];
+    this.customerPatience = 100;
+    
+    // Generate actual human 2D avatar via Dicebear API
+    const randomSeed = Math.random().toString(36).substring(7);
+    this.customerAvatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${randomSeed}&backgroundColor=transparent`;
     
     const availableRecipes = RECIPES.filter(r => r.minLevel <= (this.user.level || 1));
     this.currentCustomer = availableRecipes[Math.floor(Math.random() * availableRecipes.length)];
+    
+    this.startPatienceTimer();
+  }
+
+  startPatienceTimer() {
+    if (this.patienceInterval) clearInterval(this.patienceInterval);
+    
+    this.patienceInterval = setInterval(async () => {
+      if (this.isRequesting || this.customerMood !== 'neutral') return;
+      
+      this.customerPatience -= 2; // Decays by 2% every 0.5s -> 25 seconds total time
+      
+      if (this.customerPatience <= 0) {
+        clearInterval(this.patienceInterval);
+        this.customerMood = 'angry';
+        let beep = this.wrongSound.cloneNode() as HTMLAudioElement;
+        beep.play().catch(e => console.log(e));
+        
+        this.isRequesting = true;
+        try {
+          const res: any = await lastValueFrom(this.api.play(0, 0, 10)); // Deduct 10 energy for timeout
+          this.user = res.user;
+          this.user.clickPower = res.clickPower;
+          this.spawnFloatingText(`Kelamaan! -10 ⚡`, '#F44336');
+        } catch (e: any) {
+          console.log(e);
+        } finally {
+          this.isRequesting = false;
+          setTimeout(() => {
+            this.generateCustomer();
+          }, 1500);
+        }
+      }
+    }, 500);
   }
 
   addIngredient(item: string) {
@@ -121,12 +161,20 @@ export class HomePage {
 
     try {
       if (isCorrect) {
+        clearInterval(this.patienceInterval);
         this.customerMood = 'happy';
         let clank = this.buySound.cloneNode() as HTMLAudioElement;
         clank.play().catch(e => console.log(e));
         
         const powerMult = (this.user.clickPower || 50) / 50; 
-        const rewardCoins = Math.floor(this.currentCustomer.baseReward * powerMult);
+        
+        let speedBonus = 0;
+        if (this.customerPatience >= 70) {
+            speedBonus = Math.floor(this.currentCustomer.baseReward * 0.5); 
+            this.spawnFloatingText(`Kilat! Tip +${speedBonus} 💰`, '#ffc107', -40);
+        }
+
+        const rewardCoins = Math.floor(this.currentCustomer.baseReward * powerMult) + speedBonus;
         const rewardXp = this.currentCustomer.baseXp;
         const energyCost = 10;
         
@@ -138,6 +186,7 @@ export class HomePage {
         this.spawnFloatingText(`+${rewardXp} ⭐`, '#2196F3', 50);
 
       } else {
+        clearInterval(this.patienceInterval);
         this.customerMood = 'angry';
         let beep = this.wrongSound.cloneNode() as HTMLAudioElement;
         beep.play().catch(e => console.log(e));
@@ -168,7 +217,6 @@ export class HomePage {
   startAutoClicker() {
     if (this.autoClickInterval) clearInterval(this.autoClickInterval);
     
-    // Sync with backend every 10 seconds to get auto-clicker rewards & energy regen
     this.autoClickInterval = setInterval(async () => {
       try {
         const res: any = await lastValueFrom(this.api.idle());
@@ -182,7 +230,7 @@ export class HomePage {
             setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 1000);
           }
         } else if (res.energy > this.user.energy) {
-          this.user.energy = res.energy; // Just update energy if no coin reward
+          this.user.energy = res.energy; 
         }
       } catch(e) {
         console.error("Auto-sync error", e);
