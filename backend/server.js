@@ -10,7 +10,8 @@ app.use(express.json());
 const migrations = [
   'ALTER TABLE users ADD COLUMN clickPower INT DEFAULT 50;',
   'ALTER TABLE users ADD COLUMN energy INT DEFAULT 100;',
-  'ALTER TABLE users ADD COLUMN maxEnergy INT DEFAULT 100;'
+  'ALTER TABLE users ADD COLUMN maxEnergy INT DEFAULT 100;',
+  'ALTER TABLE users ADD COLUMN autoClicker INT DEFAULT 0;'
 ];
 migrations.forEach(q => {
   db.query(q, (err) => {
@@ -75,16 +76,26 @@ app.post('/play', (req, res) => {
   });
 });
 
-// IDLE
+// TRUE IDLE (CALLED ON STARTUP)
 app.post('/idle', (req, res) => {
   db.query('SELECT * FROM users LIMIT 1', (err, result) => {
     let user = result[0];
 
     let now = new Date();
     let last = new Date(user.lastLogin);
-    let diff = Math.floor((now - last) / 1000);
-    let reward = diff * 2;
-    let coins = user.coins + reward;
+    let diff = Math.floor((now - last) / 1000); // seconds passed
+    
+    if (diff < 0) diff = 0;
+    
+    let baseReward = diff * 2;
+    let autoClickerLevel = user.autoClicker || 0;
+    let clickPower = user.clickPower || 50;
+    
+    // Auto clicker earns (clickPower / 5) per second offline per level
+    let autoClickerReward = diff * Math.floor(clickPower / 5) * autoClickerLevel;
+    let totalReward = baseReward + autoClickerReward;
+    
+    let coins = user.coins + totalReward;
 
     // Energy regen (1 per second)
     let maxEnergy = user.maxEnergy || 100;
@@ -95,7 +106,11 @@ app.post('/idle', (req, res) => {
       'UPDATE users SET coins=?, lastLogin=?, energy=? WHERE id=?',
       [coins, now, newEnergy, user.id],
       () => {
-        res.json({ reward, energy: newEnergy });
+        res.json({ 
+          reward: totalReward, 
+          energy: newEnergy,
+          diffSeconds: diff 
+        });
       }
     );
   });
@@ -109,6 +124,7 @@ app.post('/upgrade', (req, res) => {
     let coins = user.coins;
     let clickPower = user.clickPower || 50;
     let maxEnergy = user.maxEnergy || 100;
+    let autoClicker = user.autoClicker || 0;
     
     if (type === 'barista' && coins >= 500) {
       coins -= 500;
@@ -116,13 +132,16 @@ app.post('/upgrade', (req, res) => {
     } else if (type === 'machine' && coins >= 300) {
       coins -= 300;
       maxEnergy += 50;
+    } else if (type === 'robot' && coins >= 2000) {
+      coins -= 2000;
+      autoClicker += 1;
     } else {
       return res.status(400).json({ error: "Koin tidak cukup atau tipe tidak valid" });
     }
     
     db.query(
-      'UPDATE users SET coins=?, clickPower=?, maxEnergy=? WHERE id=?',
-      [coins, clickPower, maxEnergy, user.id],
+      'UPDATE users SET coins=?, clickPower=?, maxEnergy=?, autoClicker=? WHERE id=?',
+      [coins, clickPower, maxEnergy, autoClicker, user.id],
       () => {
         db.query('SELECT * FROM users WHERE id=?', [user.id], (err, data) => {
           res.json(data[0]);
