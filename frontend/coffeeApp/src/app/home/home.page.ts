@@ -56,18 +56,30 @@ export class HomePage {
 
   async ionViewWillEnter() {
     try {
-      this.user = await lastValueFrom(this.api.getUser());
+      const userReq = lastValueFrom(this.api.getUser());
+      const timeout1 = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+      this.user = await Promise.race([userReq, timeout1]);
       
-      const res: any = await lastValueFrom(this.api.idle());
+      const idleReq: any = lastValueFrom(this.api.idle());
+      const timeout2 = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+      const res: any = await Promise.race([idleReq, timeout2]);
+      
       if (res.diffSeconds > 60 && res.reward > 0) {
         this.offlineReward = res.reward;
         this.offlineTime = Math.floor(res.diffSeconds / 60);
         this.showWelcomePopup = true;
       }
-      
       this.user.coins += res.reward;
       this.user.energy = res.energy;
-      
+    } catch (e) {
+      console.warn('Backend Unreachable! Using Offline Fallback Mode', e);
+      const savedUser = localStorage.getItem('offlineUser');
+      if (savedUser) {
+        this.user = JSON.parse(savedUser);
+      } else {
+        this.user = { coins: 0, xp: 0, level: 1, energy: 100, maxEnergy: 100, clickPower: 50, autoClicker: 0 };
+      }
+    } finally {
       if (this.user.energy === undefined || this.user.energy === null) this.user.energy = 100;
       if (this.user.maxEnergy === undefined || this.user.maxEnergy === null) this.user.maxEnergy = 100;
       if (this.user.clickPower === undefined || this.user.clickPower === null) this.user.clickPower = 50;
@@ -75,9 +87,6 @@ export class HomePage {
       
       this.generateCustomer();
       this.startAutoClicker();
-
-    } catch (e) {
-      console.error('Error fetching user', e);
     }
   }
   
@@ -91,7 +100,6 @@ export class HomePage {
     this.customerMood = 'neutral';
     this.customerPatience = 100;
     
-    // Generate actual human 2D avatar via Dicebear API
     const randomSeed = Math.random().toString(36).substring(7);
     this.customerAvatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${randomSeed}&backgroundColor=transparent`;
     
@@ -107,7 +115,7 @@ export class HomePage {
     this.patienceInterval = setInterval(async () => {
       if (this.isRequesting || this.customerMood !== 'neutral') return;
       
-      this.customerPatience -= 2; // Decays by 2% every 0.5s -> 25 seconds total time
+      this.customerPatience -= 2; 
       
       if (this.customerPatience <= 0) {
         clearInterval(this.patienceInterval);
@@ -117,13 +125,17 @@ export class HomePage {
         
         this.isRequesting = true;
         try {
-          const res: any = await lastValueFrom(this.api.play(0, 0, 10)); // Deduct 10 energy for timeout
+          const apiReq: any = lastValueFrom(this.api.play(0, 0, 10));
+          const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+          const res: any = await Promise.race([apiReq, timeout]);
           this.user = res.user;
           this.user.clickPower = res.clickPower;
-          this.spawnFloatingText(`Kelamaan! -10 ⚡`, '#F44336');
         } catch (e: any) {
-          console.log(e);
+          console.warn("Timeout Penalty (Offline)");
+          this.user.energy = Math.max(0, this.user.energy - 10);
+          localStorage.setItem('offlineUser', JSON.stringify(this.user));
         } finally {
+          this.spawnFloatingText(`Kelamaan! -10 ⚡`, '#F44336');
           this.isRequesting = false;
           setTimeout(() => {
             this.generateCustomer();
@@ -158,49 +170,63 @@ export class HomePage {
                       this.currentCup.every((val, index) => val === this.currentCustomer!.ingredients[index]);
 
     this.isRequesting = true;
+    let rewardCoins = 0;
+    let rewardXp = 0;
+    let energyCost = 10;
+
+    if (isCorrect) {
+      clearInterval(this.patienceInterval);
+      this.customerMood = 'happy';
+      let clank = this.buySound.cloneNode() as HTMLAudioElement;
+      clank.play().catch(e => console.log(e));
+      
+      const powerMult = (this.user.clickPower || 50) / 50; 
+      let speedBonus = 0;
+      if (this.customerPatience >= 70) {
+          speedBonus = Math.floor(this.currentCustomer.baseReward * 0.5); 
+          this.spawnFloatingText(`Kilat! Tip +${speedBonus} 💰`, '#ffc107', -40);
+      }
+
+      rewardCoins = Math.floor(this.currentCustomer.baseReward * powerMult) + speedBonus;
+      rewardXp = this.currentCustomer.baseXp;
+    } else {
+      clearInterval(this.patienceInterval);
+      this.customerMood = 'angry';
+      let beep = this.wrongSound.cloneNode() as HTMLAudioElement;
+      beep.play().catch(e => console.log(e));
+      energyCost = 15;
+    }
 
     try {
+      const apiReq = lastValueFrom(this.api.play(rewardCoins, rewardXp, energyCost));
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+      const res: any = await Promise.race([apiReq, timeout]);
+      this.user = res.user;
+      this.user.clickPower = res.clickPower;
+    } catch (e: any) {
+      console.warn("Serve Offline Fallback");
       if (isCorrect) {
-        clearInterval(this.patienceInterval);
-        this.customerMood = 'happy';
-        let clank = this.buySound.cloneNode() as HTMLAudioElement;
-        clank.play().catch(e => console.log(e));
-        
-        const powerMult = (this.user.clickPower || 50) / 50; 
-        
-        let speedBonus = 0;
-        if (this.customerPatience >= 70) {
-            speedBonus = Math.floor(this.currentCustomer.baseReward * 0.5); 
-            this.spawnFloatingText(`Kilat! Tip +${speedBonus} 💰`, '#ffc107', -40);
-        }
-
-        const rewardCoins = Math.floor(this.currentCustomer.baseReward * powerMult) + speedBonus;
-        const rewardXp = this.currentCustomer.baseXp;
-        const energyCost = 10;
-        
-        const res: any = await lastValueFrom(this.api.play(rewardCoins, rewardXp, energyCost));
-        this.user = res.user;
-        this.user.clickPower = res.clickPower;
-        
+         this.user.coins += rewardCoins;
+         this.user.xp += rewardXp;
+         this.user.energy = Math.max(0, this.user.energy - energyCost);
+         let reqXp = this.getRequiredXp();
+         while(this.user.xp >= reqXp) {
+             this.user.level++;
+             this.user.xp -= reqXp;
+             reqXp = this.getRequiredXp();
+         }
+      } else {
+         this.user.energy = Math.max(0, this.user.energy - 15);
+      }
+      localStorage.setItem('offlineUser', JSON.stringify(this.user));
+    } finally {
+      if (isCorrect) {
         this.spawnFloatingText(`+${rewardCoins} 💰`, '#4CAF50');
         this.spawnFloatingText(`+${rewardXp} ⭐`, '#2196F3', 50);
-
       } else {
-        clearInterval(this.patienceInterval);
-        this.customerMood = 'angry';
-        let beep = this.wrongSound.cloneNode() as HTMLAudioElement;
-        beep.play().catch(e => console.log(e));
-        
-        const res: any = await lastValueFrom(this.api.play(0, 0, 15));
-        this.user = res.user;
-        this.user.clickPower = res.clickPower;
-        
         this.spawnFloatingText(`Salah! -15 ⚡`, '#F44336');
       }
-    } catch (e: any) {
-      console.error('Error playing game', e);
-      if(e.error && e.error.error) alert(e.error.error);
-    } finally {
+      
       this.isRequesting = false;
       setTimeout(() => {
         this.generateCustomer();
@@ -219,11 +245,13 @@ export class HomePage {
     
     this.autoClickInterval = setInterval(async () => {
       try {
-        const res: any = await lastValueFrom(this.api.idle());
+        const idleReq = lastValueFrom(this.api.idle());
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+        const res: any = await Promise.race([idleReq, timeout]);
+        
         if (res.reward > 0) {
           this.user.coins += res.reward;
           this.user.energy = res.energy;
-          
           if (this.user.autoClicker > 0) {
             const id = Date.now() + Math.random();
             this.floatingTexts.push({ id, x: 10 + Math.random()*50, y: window.innerHeight - 150, text: `+${res.reward} 🤖`, color: '#ffeb3b' });
@@ -233,7 +261,17 @@ export class HomePage {
           this.user.energy = res.energy; 
         }
       } catch(e) {
-        console.error("Auto-sync error", e);
+        console.warn("Auto-sync Offline");
+        if (this.user.autoClicker > 0) {
+           const basePower = this.user.clickPower || 50;
+           const autoReward = Math.floor(basePower / 5) * this.user.autoClicker;
+           this.user.coins += autoReward;
+           const id = Date.now() + Math.random();
+           this.floatingTexts.push({ id, x: 10 + Math.random()*50, y: window.innerHeight - 150, text: `+${autoReward} 🤖 (Offline)`, color: '#ffeb3b' });
+           setTimeout(() => { this.floatingTexts = this.floatingTexts.filter(t => t.id !== id); }, 1000);
+        }
+        if (this.user.energy < this.user.maxEnergy) this.user.energy++;
+        localStorage.setItem('offlineUser', JSON.stringify(this.user));
       }
     }, 10000); 
   }
@@ -251,16 +289,32 @@ export class HomePage {
     this.isRequesting = true;
     
     try {
-      this.user = await lastValueFrom(this.api.upgrade(type));
+      const apiReq = lastValueFrom(this.api.upgrade(type));
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+      this.user = await Promise.race([apiReq, timeout]);
       let clank = this.buySound.cloneNode() as HTMLAudioElement;
       clank.play().catch(e => console.log(e));
-      
-      if (type === 'robot') {
-        this.startAutoClicker();
-      }
+      if (type === 'robot') this.startAutoClicker();
     } catch (e: any) {
-      console.error('Error upgrade', e);
-      alert(e.error && e.error.error ? e.error.error : "Gagal upgrade. Koin tidak cukup?");
+      console.warn('Upgrade Offline Fallback');
+      if (type === 'barista' && this.user.coins >= 500) {
+         this.user.coins -= 500;
+         this.user.clickPower += 50;
+      } else if (type === 'machine' && this.user.coins >= 300) {
+         this.user.coins -= 300;
+         this.user.maxEnergy += 50;
+      } else if (type === 'robot' && this.user.coins >= 2000) {
+         this.user.coins -= 2000;
+         this.user.autoClicker += 1;
+      } else {
+         alert("Koin tidak cukup!");
+         this.isRequesting = false;
+         return;
+      }
+      localStorage.setItem('offlineUser', JSON.stringify(this.user));
+      let clank = this.buySound.cloneNode() as HTMLAudioElement;
+      clank.play().catch(e => console.log(e));
+      if (type === 'robot') this.startAutoClicker();
     } finally {
       this.isRequesting = false;
     }
