@@ -27,7 +27,7 @@
          [class.clicking]="isRequesting"
          [class.shake]="isShaking">
          
-      <div class="emoji">☕</div>
+      <div class="emoji">{{ getCoffeeEmoji() }}</div>
       
       <!-- FLOATING TEXTS -->
       <div *ngFor="let t of floatingTexts" 
@@ -44,13 +44,6 @@
   </div>
 
   <div class="action-container">
-    <button class="idle-btn" (click)="claimIdle()" [disabled]="isRequesting">
-      <div class="idle-content">
-        <span class="icon">🎁</span>
-        <span class="text">Klaim Idle Reward</span>
-      </div>
-    </button>
-    
     <button class="shop-btn" (click)="toggleShop()">
       <div class="idle-content" style="background: transparent; padding:0; display:flex; gap:10px; justify-content:center;">
         <span class="icon">🛒</span>
@@ -59,6 +52,19 @@
     </button>
   </div>
   
+  <!-- WELCOME POPUP (TRUE IDLE) -->
+  <div class="shop-modal" *ngIf="showWelcomePopup">
+    <div class="shop-content welcome-box">
+      <h2>Selamat Datang! 👋</h2>
+      <div class="welcome-icon">🛌</div>
+      <p>Saat Anda beristirahat selama <b>{{ offlineTime }} menit</b>, kafe Anda terus bekerja keras!</p>
+      <div class="offline-reward">
+        +{{ offlineReward }} 💰
+      </div>
+      <button class="buy-btn" style="width: 100%; margin-top: 15px;" (click)="closeWelcome()">Luar Biasa!</button>
+    </div>
+  </div>
+
   <!-- SHOP MODAL -->
   <div class="shop-modal" *ngIf="isShopOpen">
     <div class="shop-content">
@@ -79,6 +85,14 @@
           <p>+50 Max Energi</p>
         </div>
         <button class="buy-btn" (click)="buyUpgrade('machine')">300 💰</button>
+      </div>
+      
+      <div class="shop-item">
+        <div class="item-info">
+          <h3>🤖 Robot Auto-Clicker</h3>
+          <p>Ketuk Otomatis (Lvl {{user?.autoClicker || 0}})</p>
+        </div>
+        <button class="buy-btn" style="background: #e91e63; box-shadow: 0 4px 10px rgba(233, 30, 99, 0.4);" (click)="buyUpgrade('robot')">2000 💰</button>
       </div>
       
       <button class="close-btn" (click)="toggleShop()">Tutup</button>
